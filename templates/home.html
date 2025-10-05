@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #fafafa; }
+        h1 { color: #602e87; margin-bottom: 20px; }
+
+        input[type="text"] {
+            padding: 8px;
+            font-size: 16px;
+            width: 250px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+        }
+
+        .admin-actions-card {
+            background-color: #f2f2f2;
+            border: 2px solid #ccc;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .admin-actions-card a {
+            display: inline-block;
+            padding: 10px 20px;
+            margin-right: 15px;
+            background-color: #602e87;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .admin-actions-card a:hover { background-color: #602e87; }
+
+        ul { list-style-type: none; padding: 0; }
+        li { margin: 5px 0; }
+        li a { text-decoration: none; color: #602e87; font-size: 18px; }
+        li a:hover { text-decoration: underline; }
+
+        .highlight { background-color: yellow; }
+        .no-results { font-style: italic; color: #777; }
+
+        .selected a {
+            background-color: #d0d0ff;
+            border-radius: 4px;
+            padding: 2px 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Admin Dashboard</h1>
+
+<div class="admin-actions-card">
+    <a href="{{ url_for('payroll') }}">Run Payroll</a>
+    <a href="{{ url_for('add_student') }}">Add New Student</a>
+
+    <!-- New buttons for Excel integration -->
+    <a href="{{ url_for('export_excel_by_grade') }}" style="background-color: green;">Export to Excel</a>
+    <a href="{{ url_for('upload_excel_zip') }}" style="background-color: orange;">Upload Excell (Zip)</a>
+</div>
+
+
+    <h2>Accounts</h2>
+    <!-- NOTE: value attribute intentionally removed so the box starts empty on reload -->
+    <input type="text" id="searchBox" placeholder="Search students..." autofocus>
+    <ul id="studentList">
+        {% for student in students %}
+            <li data-name="{{ student['name'] }}"><a href="{{ url_for('balance', student_id=student['id']) }}">{{ student['name'] }}</a></li>
+        {% endfor %}
+        <li id="noResults" class="no-results" style="display:none;">No students found.</li>
+    </ul>
+
+    <script>
+        const searchBox = document.getElementById('searchBox');
+        const studentList = document.getElementById('studentList');
+        const allItems = Array.from(studentList.querySelectorAll('li[data-name]'));
+        const noResults = document.getElementById('noResults');
+        let filtered = [];
+        let selectedIndex = -1;
+
+        function resetList() {
+            // Restore original order & text, clear selection state
+            allItems.forEach(li => {
+                li.style.display = '';
+                li.classList.remove("selected");
+                li.querySelector('a').innerHTML = li.dataset.name;
+                studentList.appendChild(li);
+            });
+            noResults.style.display = 'none';
+            filtered = [];
+            selectedIndex = -1;
+        }
+
+        function filterList(query) {
+            selectedIndex = -1;
+            if (query === "") {
+                resetList();
+                return [];
+            }
+
+            filtered = allItems
+                .map(li => {
+                    const name = li.dataset.name;
+                    const lowerName = name.toLowerCase();
+                    const index = lowerName.indexOf(query);
+                    return { li, name, index };
+                })
+                .filter(item => item.index !== -1)
+                .sort((a, b) => {
+                    if (a.index !== b.index) return a.index - b.index;
+                    return a.name.localeCompare(b.name);
+                });
+
+            // Hide everything and reset innerHTML
+            allItems.forEach(li => {
+                li.style.display = 'none';
+                li.classList.remove("selected");
+                li.querySelector('a').innerHTML = li.dataset.name;
+            });
+
+            if (filtered.length === 0) {
+                noResults.style.display = '';
+            } else {
+                noResults.style.display = 'none';
+                filtered.forEach(item => {
+                    const { li, name, index } = item;
+                    const before = name.slice(0, index);
+                    const match = name.slice(index, index + query.length);
+                    const after = name.slice(index + query.length);
+
+                    li.querySelector('a').innerHTML =
+                        before + `<span class="highlight">${match}</span>` + after;
+
+                    li.style.display = '';
+                    studentList.appendChild(li);
+                });
+            }
+
+            return filtered;
+        }
+
+        // live input
+        searchBox.addEventListener('input', function() {
+            filterList(this.value.toLowerCase());
+        });
+
+        // keyboard handling: Esc, arrows, Enter
+        searchBox.addEventListener('keydown', function(e) {
+            if (e.key === "Escape") {
+                searchBox.value = "";
+                resetList();
+                return;
+            }
+
+            if (filtered.length === 0) return;
+
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                selectedIndex = (selectedIndex < filtered.length - 1) ? selectedIndex + 1 : 0;
+                updateSelection();
+            }
+
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                selectedIndex = (selectedIndex > 0) ? selectedIndex - 1 : filtered.length - 1;
+                updateSelection();
+            }
+
+            if (e.key === "Enter") {
+                if (selectedIndex >= 0 && filtered[selectedIndex]) {
+                    const firstLink = filtered[selectedIndex].li.querySelector('a');
+                    if (firstLink) window.location.href = firstLink.href;
+                } else if (filtered.length > 0) {
+                    const firstLink = filtered[0].li.querySelector('a');
+                    if (firstLink) window.location.href = firstLink.href;
+                }
+            }
+        });
+
+        function updateSelection() {
+            filtered.forEach((item, i) => {
+                if (i === selectedIndex) {
+                    item.li.classList.add("selected");
+                    // ensure selected item is visible on screen
+                    item.li.scrollIntoView({ block: "nearest" });
+                } else {
+                    item.li.classList.remove("selected");
+                }
+            });
+        }
+
+        // Clear search on full page load (prevents server-provided query from persisting)
+        window.addEventListener('load', function() {
+            searchBox.value = "";
+            resetList();
+            searchBox.focus();
+        });
+
+        // ALSO clear when returning via back/forward cache
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                searchBox.value = "";
+                resetList();
+                searchBox.focus();
+            }
+        });
+    </script>
+</body>
+</html>

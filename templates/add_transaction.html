@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Transaction for {{ student['name'] }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; }
+        h1 { color: #602e87; }
+        form { margin-top: 20px; max-width: 400px; }
+        label { display: block; margin-top: 10px; }
+        input[type="text"], input[type="number"], input[type="date"] {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 15px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Add Transaction for {{ student['name'] }}</h1>
+    <form method="post">
+        <label>Date:</label>
+        <input type="date" name="date" id="date" required>
+
+        <label>Description:</label>
+        <input type="text" name="description" required>
+
+        <label>Debit (-):</label>
+        <input type="number" name="debit" min="0" value="0">
+
+        <label>Credit (+):</label>
+        <input type="number" name="credit" min="0" value="0">
+
+        <button type="submit">Add Transaction</button>
+    </form>
+
+    <script>
+        // Autofill today's date
+        document.addEventListener("DOMContentLoaded", function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = today;
+        });
+    </script>
+</body>
+</html>

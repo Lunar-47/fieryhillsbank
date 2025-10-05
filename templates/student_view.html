@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ student['name'] }}'s Account</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; }
+        h1 { color: #602e87; }
+        table { border-collapse: collapse; width: 80%; margin-top: 20px; margin-bottom: 20px;}
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .balance { font-weight: bold; margin-top: 15px; }
+        .logout { margin-top: 20px; }
+        .btn { padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 0.95em; border: none; text-decoration: none; }
+        .change-password-btn { background-color: #4CAF50; color: white; }
+        .change-password-btn:hover { opacity: 0.85; }
+    </style>
+</head>
+<body>
+    <h1>{{ student['name'] }}'s Account</h1>
+    <h2 class="balance">Current Balance: {{ balance }} hawkeyes</h2>
+    
+    <table>
+        <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Debit (-)</th>
+            <th>Credit (+)</th>
+        </tr>
+        {% for t in transactions|sort(attribute='date', reverse=true) %}
+        <tr>
+            <td>{{ t['date'] }}</td>
+            <td>{{ t['description'] }}</td>
+            <td>{{ t['debit'] }}</td>
+            <td>{{ t['credit'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <!-- Change Password Button -->
+    <form action="{{ url_for('change_password') }}" method="get" style="display:inline;">
+        <button type="submit" class="btn change-password-btn">Change Password</button>
+    </form>
+
+    {% if message %}
+        <p>{{ message }}</p>
+    {% endif %}
+
+    <!-- Logout link -->
+    <p class="logout"><a href="{{ url_for('logout') }}">Logout</a></p>
+</body>
+</html>
