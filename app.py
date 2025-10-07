@@ -290,25 +290,32 @@ def reset_student_password(student_id):
 def payroll():
     if session.get("user_type") != "admin":
         return redirect(url_for("login"))
-    
+
     conn = get_db_connection()
     students = conn.execute("SELECT * FROM students").fetchall()
-    conn.close()
 
     if request.method == "POST":
         today_str = date.today().isoformat()
-        conn = get_db_connection()
         for student in students:
             amount = int(request.form[f"payroll_{student['id']}"])
-            conn.execute("UPDATE students SET payroll = ? WHERE id = ?", (amount, student["id"]))
+
+            # Save this amount as their default for next time
+            conn.execute("UPDATE students SET default_payroll = ? WHERE id = ?", (amount, student["id"]))
+
+            # Log the transaction
             conn.execute(
                 "INSERT INTO transactions (student_id, date, description, debit, credit) VALUES (?, ?, ?, ?, ?)",
                 (student["id"], today_str, "Payroll", 0, amount)
             )
+
         conn.commit()
         conn.close()
         return redirect(url_for("home"))
 
+    # Sort students by name (case-insensitive)
+    students = sorted(students, key=lambda s: s['name'].lower())
+
+    conn.close()
     return render_template("payroll.html", students=students)
 
 # -----------------------------

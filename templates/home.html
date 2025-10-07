@@ -196,9 +196,16 @@
         // Clear search on full page load (prevents server-provided query from persisting)
         window.addEventListener('load', function() {
             searchBox.value = "";
-            resetList();
-            searchBox.focus();
-        });
+
+         // Sort alphabetically by data-name
+             allItems.sort((a, b) => {
+                return a.dataset.name.localeCompare(b.dataset.name);
+             });
+
+    resetList();
+    searchBox.focus();
+});
+
 
         // ALSO clear when returning via back/forward cache
         window.addEventListener('pageshow', function(event) {
