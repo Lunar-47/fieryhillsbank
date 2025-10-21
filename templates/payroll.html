@@ -40,7 +40,7 @@
         }
 
         .payroll-btn {
-            background-color: #4CAF50; /* green */
+            background-color: #4CAF50;
         }
 
         h1 {
@@ -51,7 +51,10 @@
 <body>
     <h1>Payroll</h1>
 
-    <form method="post" onsubmit="return confirmPayroll();">
+    <form method="post">
+        <label>Date:</label>
+        <input type="date" name="date" id="date" required>
+
         <table>
             <tr>
                 <th>Student</th>
@@ -68,12 +71,42 @@
         </table>
         <button type="submit" class="payroll-btn">Run Payroll</button>
     </form>
+
     <p><a href="{{ url_for('home') }}">Cancel</a></p>
 
     <script>
+        let preventSubmit = false;
+
+        // Flag Enter presses inside inputs
+        document.querySelectorAll('form input').forEach(function(input) {
+            input.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    preventSubmit = true;
+                    event.preventDefault();
+                }
+            });
+        });
+
+        // Allow form submission only from the button
+        document.querySelector('form').addEventListener('submit', function(event) {
+            if (preventSubmit) {
+                preventSubmit = false; // reset
+                event.preventDefault(); // block the submission triggered by Enter
+                return false;
+            }
+            return confirmPayroll(); // show confirmation popup
+        });
+
         function confirmPayroll() {
             return confirm("Are you sure you want to run the payroll? This action cannot be undone.");
         }
+
+        // Autofill today's date
+        document.addEventListener("DOMContentLoaded", function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = today;
+        });
+        
     </script>
 </body>
 </html>

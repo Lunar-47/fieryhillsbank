@@ -78,9 +78,6 @@ def balance(student_id):
     # Calculate the balance (sum of credits - debits)
     balance = sum(t["credit"] - t["debit"] for t in transactions)
 
-    # Get the grade level of the student and remove the "Grade_" part
-    grade = student["grade"].replace("Grade_", "")  # This will remove "Grade_" and leave just the number
-
     # Render the balance template with the correct context
     return render_template(
         "balance.html",
@@ -88,7 +85,7 @@ def balance(student_id):
         student_id=student_id,  # passing student_id
         transactions=transactions,  # passing the list of transactions
         balance=balance,  # passing the calculated balance
-        grade=grade  # passing the student's grade level without "Grade_"
+        grade=student["grade"]  # passing the student's grade level without "Grade_"
     )
 
 @app.route("/add_transaction/<int:student_id>", methods=["GET", "POST"])
@@ -295,7 +292,7 @@ def payroll():
     students = conn.execute("SELECT * FROM students").fetchall()
 
     if request.method == "POST":
-        today_str = date.today().isoformat()
+        date_val = request.form["date"]
         for student in students:
             amount = int(request.form[f"payroll_{student['id']}"])
 
@@ -305,7 +302,7 @@ def payroll():
             # Log the transaction
             conn.execute(
                 "INSERT INTO transactions (student_id, date, description, debit, credit) VALUES (?, ?, ?, ?, ?)",
-                (student["id"], today_str, "Payroll", 0, amount)
+                (student["id"], date_val, "Payroll", 0, amount)
             )
 
         conn.commit()
@@ -326,7 +323,6 @@ def export_excel_by_grade():
     if session.get("user_type") != "admin":
         return redirect(url_for("login"))
 
-    from datetime import datetime
     conn = get_db_connection()
     students = conn.execute("SELECT * FROM students").fetchall()
     transactions = conn.execute("SELECT * FROM transactions ORDER BY date").fetchall()
@@ -336,8 +332,7 @@ def export_excel_by_grade():
     all_grades = set(str(s["grade"]) for s in students)
     
     # Extract numeric part from 'Grade_X' and sort
-    grades_ordered = ["K"] + sorted([g for g in all_grades if g != "K"], 
-                                    key=lambda x: int(x.split('_')[1]) if x != "K" else -1)
+    grades_ordered = sorted([g for g in all_grades])
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zip_file:
@@ -501,7 +496,7 @@ def upload_excel_zip():
                 if not grade_match:
                     continue  # Skip files that don't follow the "Grade_X" pattern
 
-                grade = f"Grade_{grade_match.group(1)}"  # This will extract the grade (e.g., "Grade_1")
+                grade = f"{grade_match.group(1)}"  # This will extract the grade (e.g., "Grade_1")
 
                 for sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
@@ -554,8 +549,12 @@ def upload_excel_zip():
                         else:
                             continue
 
-                        debit = int(debit or 0)
-                        credit = int(credit or 0)
+                        # Clean and convert debit/credit values
+                        debit = str(debit or 0).strip().replace('\xa0', '').replace(',', '')
+                        debit = int(debit) if debit and debit.isdigit() else 0
+
+                        credit = str(credit or 0).strip().replace('\xa0', '').replace(',', '')
+                        credit = int(credit) if credit and credit.isdigit() else 0
 
                         # Insert transaction for the student
                         conn.execute(
