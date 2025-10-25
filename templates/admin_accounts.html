@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Accounts</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; }
+        h1 { color: #602e87; }
+        table { border-collapse: collapse; width: 80%; margin-top: 20px; margin-bottom: 20px;}
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .balance { font-weight: bold; margin-top: 15px; }
+        .logout { margin-top: 20px; }
+        .btn { padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 0.95em; border: none; text-decoration: none; }
+        .change-password-btn { background-color: #4CAF50; color: white; }
+        .change-password-btn:hover { opacity: 0.85; }
+        
+    </style>
+</head>
+<body>
+    <h1>Admin Accounts</h1>
+    
+    <table>
+        <tr>
+            <th>Username</th>
+            <th>Permission Level</th>
+            <th>Delete</th>
+
+        </tr>
+        {% for a in admin_account|sort(attribute='id') %}
+        <tr>
+            <td>{{ a['name'] }}</td>
+            <td>{{ a['permissions'] }}</td>
+            <td>
+                <form action="{{ url_for('delete_admin', admin_id=a.id) }}" method="POST" style="display:inline;"
+                    onsubmit="return confirm('Are you sure you want to delete {{a.name}}? This cannot be undone.');"
+                    style="margin-top: 20px;">
+                    <button type="submit" style="background-color: #f44336; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer;">
+                        Delete Account
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <p><a href="{{ url_for('add_admin') }}" class="btn" style="background-color: #f0ad4e; color: white;">Add Admin</a></p>
+
+</body>
+</html>

@@ -13,7 +13,7 @@ from openpyxl import Workbook
 import re
 
 app = Flask(__name__)
-app.secret_key = "sdhfaushdfkjlhsdkfb"  # change this to something random
+app.secret_key = "sdhfaushdfkjlhsdkfb"
 
 # -----------------------------
 # Database functions
@@ -47,14 +47,15 @@ def calculate_balance(transactions):
 # -----------------------------
 @app.route("/", methods=["GET"])
 def home():
-    if session.get("user_type") != "admin":
+    if isinstance((session.get("user_type")), str) or session.get("user_type") < 1:
         return redirect(url_for("login"))
 
     search_query = request.args.get("q")
     conn = get_db_connection()
+    
     if search_query:
         students = conn.execute(
-            "SELECT * FROM students WHERE name LIKE ?", ('%' + search_query + '%',)
+            "SELECT * FROM students name LIKE ?", ('%' + search_query + '%',)
         ).fetchall()
     else:
         students = conn.execute("SELECT * FROM students").fetchall()
@@ -63,7 +64,7 @@ def home():
 
 @app.route("/balance/<int:student_id>")
 def balance(student_id):
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
     
     conn = get_db_connection()
@@ -90,7 +91,7 @@ def balance(student_id):
 
 @app.route("/add_transaction/<int:student_id>", methods=["GET", "POST"])
 def add_transaction(student_id):
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
     
     conn = get_db_connection()
@@ -175,11 +176,11 @@ def edit_transaction(transaction_id):
     )
 
 # -----------------------------
-# Student Management (no username)
+# Student Management
 # -----------------------------
 @app.route("/add_student", methods=["GET", "POST"])
 def add_student():
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
 
     conn = get_db_connection()
@@ -212,6 +213,42 @@ def add_student():
 
     conn.close()
     return render_template("add_student.html", message=message)
+            
+@app.route("/add_admin", methods=["GET", "POST"])
+def add_admin():
+    if session.get("user_type") != 2:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    message = ""
+
+    if request.method == "POST":
+        name = request.form.get("name").strip()
+        password = request.form.get("password").strip()
+        permission = request.form.get("permission")
+
+        if not name or not password or not permission:
+            message = "Name, password, and permission level are required!"
+        else:
+            # Hash the password
+            hashed_password = generate_password_hash(password)
+
+            # Check if admin already exists
+            existing = conn.execute("SELECT * FROM admins WHERE name = ?", (name,)).fetchone()
+            if existing:
+                message = f"Admin '{name}' already exists!"
+            else:
+                # Insert new student
+                conn.execute(
+                    "INSERT INTO admins (name, password, permissions) VALUES (?, ?, ?)",
+                    (name, hashed_password, permission)
+                )
+                conn.commit()
+                conn.close()
+                return redirect(url_for("home"))
+
+    conn.close()
+    return render_template("add_admin.html", message=message)
 
 @app.route("/change_password", methods=["GET", "POST"])
 def change_password():
@@ -253,7 +290,7 @@ def change_password():
 
 @app.route("/reset_student_password/<int:student_id>", methods=["GET", "POST"])
 def reset_student_password(student_id):
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
 
     message = ""
@@ -285,7 +322,7 @@ def reset_student_password(student_id):
 
 @app.route("/payroll", methods=["GET", "POST"])
 def payroll():
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
 
     conn = get_db_connection()
@@ -315,12 +352,28 @@ def payroll():
     conn.close()
     return render_template("payroll.html", students=students)
 
+@app.route("/admin_accounts")
+def admin_accounts():
+    if session.get("user_type") != 2:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    admin_account = conn.execute(
+        "SELECT * FROM admins",
+    ).fetchall()
+    conn.close()
+
+    return render_template(
+        "admin_accounts.html",
+        admin_account=admin_account
+    )
+
 # -----------------------------
 # Excel Export / Upload
 # -----------------------------
 @app.route("/export_excel_by_grade")
 def export_excel_by_grade():
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
 
     conn = get_db_connection()
@@ -470,7 +523,7 @@ def export_excel_by_grade():
 
 @app.route("/upload_excel_zip", methods=["GET", "POST"])
 def upload_excel_zip():
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
 
     if request.method == "POST":
@@ -592,6 +645,10 @@ def login():
         student = conn.execute(
             "SELECT * FROM students WHERE name = ?", (name,)
         ).fetchone()
+
+        admin = conn.execute(
+            "SELECT * FROM admins WHERE name = ?", (name,)
+        ).fetchone()
         conn.close()
 
         # Check student login
@@ -599,16 +656,14 @@ def login():
             session["user_type"] = "student"
             session["user_id"] = student["id"]
             return redirect(url_for("student_dashboard"))
-
-        # Check admin login
-        admin_name = "admin"
-        admin_password = "admin123"
-        if name == admin_name and password == admin_password:
-            session["user_type"] = "admin"
-            session["user_id"] = None
-            return redirect(url_for("home"))
-
-        message = "Invalid name or password!"
+        elif admin and check_password_hash(admin["password"], password):
+            if admin["permissions"] > 0:
+                session["user_type"] = admin["permissions"]
+                return redirect(url_for("home"))
+            else:
+                message = "This account is not active"
+        else:
+            message = "Invalid name or password!"
 
     return render_template("login.html", message=message)
 
@@ -643,14 +698,26 @@ def student_dashboard():
 
 @app.route("/delete_student/<int:student_id>", methods=["POST"])
 def delete_student(student_id):
-    if session.get("user_type") != "admin":
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
         return redirect(url_for("login"))
 
     conn = get_db_connection()
-    # Optionally delete all transactions for this student
+    # Delete all transactions for this student
     conn.execute("DELETE FROM transactions WHERE student_id = ?", (student_id,))
     # Delete the student record
     conn.execute("DELETE FROM students WHERE id = ?", (student_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("home"))
+
+@app.route("/delete_admin/<int:admin_id>", methods=["POST"])
+def delete_admin(admin_id):
+    if session.get("user_type") != 2:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    # Delete the admin record
+    conn.execute("DELETE FROM admins WHERE id = ?", (admin_id,))
     conn.commit()
     conn.close()
     return redirect(url_for("home"))

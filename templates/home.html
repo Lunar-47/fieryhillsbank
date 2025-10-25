@@ -57,10 +57,9 @@
 <div class="admin-actions-card">
     <a href="{{ url_for('payroll') }}">Run Payroll</a>
     <a href="{{ url_for('add_student') }}">Add New Student</a>
-
-    <!-- New buttons for Excel integration -->
     <a href="{{ url_for('export_excel_by_grade') }}" style="background-color: green;">Export to Excel</a>
     <a href="{{ url_for('upload_excel_zip') }}" style="background-color: orange;">Upload Excell (Zip)</a>
+    <a href="{{ url_for('admin_accounts') }}" style="background-color: red;">Admin Accounts</a>
 </div>
 
 
