@@ -4,7 +4,7 @@
     <title>{{ student_name }}'s Balance</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
+        body { font-family: Arial, sans-serif; margin: 30px; margin-top: 20px;}
         h1 { color: #602e87; margin-top: 10px; margin-bottom: 0px;} /* reduced space above title */
         table { border-collapse: collapse; width: 80%; margin-top: 20px; }
         th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
@@ -34,7 +34,7 @@
 <body>
     <!-- Back to Dashboard -->
     <p class="top-link">
-        <a href="{{ url_for('home') }}" class="btn back-btn">&larr; Back to Dashboard</a>
+        <a href="{{ url_for('home') }}" style="background-color: #602e87; color: white;" class="btn back-btn">&larr; Back to Dashboard</a>
     </p>
 
     <h1>{{ student_name }} ({{ grade }})'s Balance</h1> <!-- Added grade here -->

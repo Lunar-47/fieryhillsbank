@@ -7,11 +7,25 @@
         body { font-family: Arial, sans-serif; margin: 30px; }
         .message { padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 5px; color: #856404; margin-bottom: 15px; }
         input, select, button { padding: 8px; font-size: 16px; margin-bottom: 10px; width: 250px; }
-        button { background-color: #602e87; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        button:hover { background-color: #4b2368; }
+
+        .btn {
+            padding: 6px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.95em;
+            border: none;
+            text-decoration: none;
+            background-color: #602e87;
+            color: white;
+        }
+
     </style>
 </head>
 <body>
+     <p class="top-link">
+        <a href="{{ url_for('admin_accounts') }}" style="background-color: #602e87; color: white;" class="btn back-btn">&larr; Back to Admins</a>
+    </p>
+
     <h1>Add New Admin</h1>
 
     {% if message %}
@@ -27,7 +41,7 @@
                 <option value="{{ i }}">{{ i }}</option>
             {% endfor %}
         </select><br>
-        <button type="submit">Add Admin</button>
+        <button type="submit" style = "padding: 10px" class="btn">Add Admin</button>
     </form>
 </body>
 </html>

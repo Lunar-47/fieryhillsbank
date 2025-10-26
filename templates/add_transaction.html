@@ -14,15 +14,15 @@
             margin-top: 5px;
             box-sizing: border-box;
         }
-        button {
-            margin-top: 20px;
-            padding: 10px 15px;
-            font-size: 16px;
+        .btn {
             background-color: #4CAF50;
             color: white;
-            border: none;
+            padding: 6px 12px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 0.95em;
+            border: none;
+            text-decoration: none;
         }
         button:hover {
             opacity: 0.9;
@@ -30,6 +30,9 @@
     </style>
 </head>
 <body>
+    <p class="top-link">
+        <a href="{{ url_for('balance', student_id=student['id']) }}" style="background-color: #602e87; color: white;" class="btn back-btn">&larr; Back to {{ student['name'] }}</a>
+    </p>
     <h1>Add Transaction for {{ student['name'] }}</h1>
     <form method="post">
         <label>Date:</label>
@@ -44,7 +47,7 @@
         <label>Credit (+):</label>
         <input type="number" name="credit" min="0" value="0">
 
-        <button type="submit">Add Transaction</button>
+        <button class="btn" style="margin-top: 20px;" type="submit">Add Transaction</button>
     </form>
 
     <script>

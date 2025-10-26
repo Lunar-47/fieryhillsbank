@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, send_file, Response, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 from datetime import date
@@ -11,6 +11,11 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime, date
 from openpyxl import Workbook
 import re
+import random
+import cv2
+from pyzbar.pyzbar import decode
+import time
+import threading
 
 app = Flask(__name__)
 app.secret_key = "sdhfaushdfkjlhsdkfb"
@@ -19,7 +24,7 @@ app.secret_key = "sdhfaushdfkjlhsdkfb"
 # Database functions
 # -----------------------------
 def get_db_connection():
-    conn = sqlite3.connect("hawkeyes.db")
+    conn = sqlite3.connect("hawkeyes.db", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -42,12 +47,142 @@ def calculate_balance(transactions):
     balance = sum(t["credit"] for t in transactions) - sum(t["debit"] for t in transactions)
     return balance
 
+camera = None
+camera_lock = threading.Lock()
+latest_frame = None
+latest_frame_lock = threading.Lock()
+is_scanner_active = False
+
+last_result = {"found": False, "id": None, "name": None}
+last_result_lock = threading.Lock()
+
+
+def get_camera():
+    """Try to open camera with multiple backends."""
+    global camera
+    with camera_lock:
+        if camera is None or not camera.isOpened():
+            print("Attempting to open camera...")
+
+            for backend, name in [
+                (cv2.CAP_DSHOW, "DirectShow"),
+                (cv2.CAP_MSMF, "Media Foundation")
+            ]:
+                print(f"Trying {name} backend...")
+                cam = cv2.VideoCapture(0, backend)
+                time.sleep(0.5)
+                if cam.isOpened():
+                    print(f"Camera opened successfully using {name}")
+                    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+                    camera = cam
+                    break
+                cam.release()
+        return camera
+
+def release_camera():
+    """Safely release the camera."""
+    global camera
+    with camera_lock:
+        if camera and camera.isOpened():
+            print("Releasing camera...")
+            camera.release()
+            camera = None
+
+
+def try_read_frame(cam):
+    """Try reading a frame safely, and auto-recover if needed."""
+    ok, frame = cam.read()
+    if not ok:
+        print("Frame grab failed. Restarting camera...")
+        release_camera()
+        cam = get_camera()
+        ok, frame = cam.read()
+    return ok, frame
+
+
+def scan_loop():
+    global last_result
+
+    last_scan_time = 0
+    cooldown = 3
+
+    while True:
+        # grab latest frame (if available)
+        with latest_frame_lock:
+            if latest_frame is None:
+                time.sleep(0.1)
+                continue
+            frame_copy = latest_frame.copy()
+
+        # scan
+        for bar in decode(frame_copy):
+            code = bar.data.decode("utf-8")[:12]
+            now = time.time()
+            if now - last_scan_time > cooldown:
+                print("Scanned:", code)
+                conn = get_db_connection()
+                student = conn.execute(
+                    "SELECT id, name FROM students WHERE code = ?", (code,)
+                ).fetchone()
+                conn.close()
+
+                with last_result_lock:
+                    if student:
+                        last_result = {"found": True, "id": student["id"], "name": student["name"]}
+                        print(f"Found student: {student['name']}")
+                    else:
+                        last_result = {"found": False, "id": None, "name": None}
+                        print("Student not found")
+
+                last_scan_time = now
+        time.sleep(0.05)
+
+
+# Start scanning background thread once at startup
+scan_thread = threading.Thread(target=scan_loop, daemon=True)
+scan_thread.start()
+
+def generate_frames():
+    global latest_frame
+    cam = get_camera()
+
+    if not cam or not cam.isOpened():
+        print("No camera available.")
+        return
+
+    try:
+        while True:
+            ok, frame = cam.read()
+            if not ok:
+                print("Frame grab failed. Restarting camera...")
+                release_camera()
+                time.sleep(1)
+                cam = get_camera()
+                continue
+
+            # Store latest frame for scanner thread
+            with latest_frame_lock:
+                latest_frame = frame.copy()
+
+            # Encode and yield frame for browser
+            _, buf = cv2.imencode(".jpg", frame)
+            yield (b"--frame\r\n"
+                   b"Content-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n")
+
+            time.sleep(0.03)
+    except GeneratorExit:
+        # This happens when the browser closes the connection
+        print("Client disconnected — releasing camera.")
+        release_camera()
+
+
 # -----------------------------
 # Routes
 # -----------------------------
 @app.route("/", methods=["GET"])
 def home():
-    if isinstance((session.get("user_type")), str) or session.get("user_type") < 1:
+    if not isinstance((session.get("user_type")), int) or session.get("user_type") < 1:
         return redirect(url_for("login"))
 
     search_query = request.args.get("q")
@@ -175,6 +310,46 @@ def edit_transaction(transaction_id):
         student=student
     )
 
+@app.route("/scanner")
+def scanner():
+    if session.get("user_type") != 1 and session.get("user_type") != 2:
+        return redirect(url_for("login"))
+
+    global is_scanner_active
+    is_scanner_active = True
+    return render_template("scanner.html")
+
+@app.route("/leave_scanner")
+def leave_scanner():
+    global is_scanner_active
+    is_scanner_active = False
+    release_camera()
+    return jsonify({"status": "camera stopped"})
+
+@app.route("/scanner_feed")
+def scanner_feed():
+    return Response(generate_frames(),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
+
+@app.route("/scan_status")
+def scan_status():
+    global last_result
+    with last_result_lock:
+        return jsonify(last_result)
+
+@app.route("/reset_scan_status", methods=["POST"])
+def reset_scan_status():
+    global last_result
+    with last_result_lock:
+        last_result = {"found": False, "id": None, "name": None}
+    return jsonify({"status": "reset"})
+
+
+@app.route("/release_camera")
+def release_camera_route():
+    release_camera()
+    return "Camera released", 200
+
 # -----------------------------
 # Student Management
 # -----------------------------
@@ -203,9 +378,12 @@ def add_student():
                 message = f"Student '{name}' already exists!"
             else:
                 # Insert new student
+                code = [str(random.randint(0, 9)) for _ in range(12)]
+                code = [''.join(code[0:12])]
+                code = int((code[0]))
                 conn.execute(
-                    "INSERT INTO students (name, grade, password) VALUES (?, ?, ?)",
-                    (name, grade, hashed_password)
+                    "INSERT INTO students (name, grade, password, code) VALUES (?, ?, ?, ?)",
+                    (name, grade, hashed_password, code)
                 )
                 conn.commit()
                 conn.close()
@@ -341,7 +519,7 @@ def payroll():
                 "INSERT INTO transactions (student_id, date, description, debit, credit) VALUES (?, ?, ?, ?, ?)",
                 (student["id"], date_val, "Payroll", 0, amount)
             )
-
+ 
         conn.commit()
         conn.close()
         return redirect(url_for("home"))
@@ -565,10 +743,13 @@ def upload_excel_zip():
                         # Create a new student record with the default password "Eaya2025"
                         default_password = "Eaya2025"
                         hashed_password = generate_password_hash(default_password)
+                        code = [str(random.randint(0, 9)) for _ in range(12)]
+                        code = [''.join(code[0:12])]
+                        code = int((code[0]))
 
                         conn.execute(
-                            "INSERT INTO students (name, grade, password) VALUES (?, ?, ?)",
-                            (sheet_name, grade, hashed_password)
+                            "INSERT INTO students (name, grade, password, code) VALUES (?, ?, ?, ?)",
+                            (sheet_name, grade, hashed_password, code)
                         )
                         conn.commit()
 

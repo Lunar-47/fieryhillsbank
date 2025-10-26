@@ -29,18 +29,19 @@
             width: 60px;
         }
 
-        button {
-            margin-top: 15px;
-            padding: 8px 15px;
-            font-size: 16px;
+        .btn {
+            padding: 6px 12px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 0.95em;
             border: none;
-            color: white;
+            text-decoration: none;
         }
 
         .payroll-btn {
             background-color: #4CAF50;
+            color: white;
+            margin-top: 20px;
         }
 
         h1 {
@@ -49,6 +50,10 @@
     </style>
 </head>
 <body>
+    <p class="top-link">
+        <a href="{{ url_for('home') }}" style="background-color: #602e87; color: white;" class="btn back-btn">&larr; Back to Dashboard</a>
+    </p>
+
     <h1>Payroll</h1>
 
     <form method="post">
@@ -69,10 +74,8 @@
             </tr>
             {% endfor %}
         </table>
-        <button type="submit" class="payroll-btn">Run Payroll</button>
+        <button type="submit" class="btn payroll-btn">Run Payroll</button>
     </form>
-
-    <p><a href="{{ url_for('home') }}">Cancel</a></p>
 
     <script>
         let preventSubmit = false;
