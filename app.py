@@ -6,10 +6,7 @@ import pandas as pd
 import io
 import zipfile
 import openpyxl
-from openpyxl.styles import Font, Border, Side
-from openpyxl.utils import get_column_letter
 from datetime import datetime, date
-from openpyxl import Workbook
 import re
 import random
 import cv2
