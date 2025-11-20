@@ -53,127 +53,6 @@ is_scanner_active = False
 last_result = {"found": False, "id": None, "name": None}
 last_result_lock = threading.Lock()
 
-
-def get_camera():
-    """Try to open camera with multiple backends."""
-    global camera
-    with camera_lock:
-        if camera is None or not camera.isOpened():
-            print("Attempting to open camera...")
-
-            for backend, name in [
-                (cv2.CAP_DSHOW, "DirectShow"),
-                (cv2.CAP_MSMF, "Media Foundation")
-            ]:
-                print(f"Trying {name} backend...")
-                cam = cv2.VideoCapture(0, backend)
-                time.sleep(0.5)
-                if cam.isOpened():
-                    print(f"Camera opened successfully using {name}")
-                    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-                    camera = cam
-                    break
-                cam.release()
-        return camera
-
-def release_camera():
-    """Safely release the camera."""
-    global camera
-    with camera_lock:
-        if camera and camera.isOpened():
-            print("Releasing camera...")
-            camera.release()
-            camera = None
-
-
-def try_read_frame(cam):
-    """Try reading a frame safely, and auto-recover if needed."""
-    ok, frame = cam.read()
-    if not ok:
-        print("Frame grab failed. Restarting camera...")
-        release_camera()
-        cam = get_camera()
-        ok, frame = cam.read()
-    return ok, frame
-
-
-def scan_loop():
-    global last_result
-
-    last_scan_time = 0
-    cooldown = 3
-
-    while True:
-        # grab latest frame (if available)
-        with latest_frame_lock:
-            if latest_frame is None:
-                time.sleep(0.1)
-                continue
-            frame_copy = latest_frame.copy()
-
-        # scan
-        for bar in decode(frame_copy):
-            code = bar.data.decode("utf-8")[:12]
-            now = time.time()
-            if now - last_scan_time > cooldown:
-                print("Scanned:", code)
-                conn = get_db_connection()
-                student = conn.execute(
-                    "SELECT id, name FROM students WHERE code = ?", (code,)
-                ).fetchone()
-                conn.close()
-
-                with last_result_lock:
-                    if student:
-                        last_result = {"found": True, "id": student["id"], "name": student["name"]}
-                        print(f"Found student: {student['name']}")
-                    else:
-                        last_result = {"found": False, "id": None, "name": None}
-                        print("Student not found")
-
-                last_scan_time = now
-        time.sleep(0.05)
-
-
-# Start scanning background thread once at startup
-scan_thread = threading.Thread(target=scan_loop, daemon=True)
-scan_thread.start()
-
-def generate_frames():
-    global latest_frame
-    cam = get_camera()
-
-    if not cam or not cam.isOpened():
-        print("No camera available.")
-        return
-
-    try:
-        while True:
-            ok, frame = cam.read()
-            if not ok:
-                print("Frame grab failed. Restarting camera...")
-                release_camera()
-                time.sleep(1)
-                cam = get_camera()
-                continue
-
-            # Store latest frame for scanner thread
-            with latest_frame_lock:
-                latest_frame = frame.copy()
-
-            # Encode and yield frame for browser
-            _, buf = cv2.imencode(".jpg", frame)
-            yield (b"--frame\r\n"
-                   b"Content-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n")
-
-            time.sleep(0.03)
-    except GeneratorExit:
-        # This happens when the browser closes the connection
-        print("Client disconnected — releasing camera.")
-        release_camera()
-
-
 # -----------------------------
 # Routes
 # -----------------------------
@@ -309,43 +188,29 @@ def edit_transaction(transaction_id):
 
 @app.route("/scanner")
 def scanner():
-    if session.get("user_type") != 1 and session.get("user_type") != 2:
+    if session.get("user_type") not in [1, 2]:
         return redirect(url_for("login"))
-
-    global is_scanner_active
-    is_scanner_active = True
     return render_template("scanner.html")
 
-@app.route("/leave_scanner")
-def leave_scanner():
-    global is_scanner_active
-    is_scanner_active = False
-    release_camera()
-    return jsonify({"status": "camera stopped"})
+@app.route("/process_scan", methods=["POST"])
+def process_scan():
+    data = request.get_json()
+    code = data.get("code", "").strip()
+    
+    # Strip the 13th digit if present
+    if len(code) == 13:
+        code = code[:12]
 
-@app.route("/scanner_feed")
-def scanner_feed():
-    return Response(generate_frames(),
-                    mimetype="multipart/x-mixed-replace; boundary=frame")
+    conn = get_db_connection()
+    student = conn.execute(
+        "SELECT id, name FROM students WHERE code = ?", (code,)
+    ).fetchone()
+    conn.close()
 
-@app.route("/scan_status")
-def scan_status():
-    global last_result
-    with last_result_lock:
-        return jsonify(last_result)
-
-@app.route("/reset_scan_status", methods=["POST"])
-def reset_scan_status():
-    global last_result
-    with last_result_lock:
-        last_result = {"found": False, "id": None, "name": None}
-    return jsonify({"status": "reset"})
-
-
-@app.route("/release_camera")
-def release_camera_route():
-    release_camera()
-    return "Camera released", 200
+    if student:
+        return jsonify({"found": True, "id": student["id"], "name": student["name"]})
+    else:
+        return jsonify({"found": False})
 
 # -----------------------------
 # Student Management

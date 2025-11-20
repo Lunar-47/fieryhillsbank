@@ -3,11 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <title>Barcode Scanner</title>
+
+  <!-- ZXing UMD -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+
   <style>
-    body { text-align: center; font-family: Arial, sans-serif; background: #f4f4f4; }
-    h1 { margin-top: 20px; }
-    img { border: 3px solid #333; border-radius: 8px; margin-top: 20px; }
-    #result { font-size: 1.5em; margin-top: 20px; color: #333; }
+    body {
+      text-align: center;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      color: #602e87;
+      margin-top: 20px;
+    }
+    video {
+      width: 640px;
+      max-width: 90%;
+      border: 3px solid #333;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    #result {
+      font-size: 1.5em;
+      margin-top: 20px;
+      color: #333;
+    }
     #transaction-form {
       display: none;
       margin-top: 20px;
@@ -18,148 +41,156 @@
       margin-left: auto;
       margin-right: auto;
     }
-      input[type="text"], input[type="number"], input[type="date"] {
-          width: 100%;
-          padding: 8px;
-          margin-top: 20px;
-          box-sizing: border-box;
-        }
-
-        .btn {
-            padding: 6px 12px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.95em;
-            border: none;
-            text-decoration: none;
-            margin-top: 20px;
-        }
-
-      h1 {
-            color: #602e87;
-        }
-
-        .top-link {
-          text-align: left;
-          margin-left: 20px;
-          margin-top: 30px; 
-        }
-
+    input[type="text"], input[type="number"], input[type="date"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 20px;
+      box-sizing: border-box;
+    }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.95em;
+      border: none;
+      text-decoration: none;
+      margin-top: 20px;
+    }
+    .top-link {
+      text-align: left;
+      margin-left: 20px;
+      margin-top: 30px;
+    }
   </style>
 </head>
 <body>
-    <p class="top-link">
-        <a href="{{ url_for('home') }}" style="background-color: #602e87; color: white;" class="btn back-btn">&larr; Back to Dashboard</a>
-    </p>
+  <p class="top-link">
+    <a href="{{ url_for('home') }}" style="background-color: #602e87; color: white;" class="btn">&larr; Back to Dashboard</a>
+  </p>
+
   <h1>Store Scanner</h1>
-  <img src="{{ url_for('scanner_feed') }}" width="640" id="video">
-  <div id="result"></div>
 
-<div id="transaction-form">
-  <h3>Add Transaction</h3>
-  <form id="addTransactionForm" method="POST">
-    <input type="date" id="dateField" name="date" required>
-    <input type="text" id="descField" name="description" required>
-    <input type="number" id="debitField" name="debit" placeholder="Debit Amount" required>
-    <input type="hidden" name="credit" value="0">
+  <video id="video" autoplay playsinline></video>
+  <div id="result">Align barcode with camera</div>
 
-    <div style="display: flex; gap: 10px;">
-      <button type="submit" class = "btn" style="flex: 1; background-color: #4CAF50; color: white;">Add Transaction</button>
-      <button type="button" id="cancelButton" class = "btn" style="background: #f44336; color: white;">Cancel</button>
-    </div>
-  </form>
-</div>
+  <div id="transaction-form">
+    <h3>Add Transaction</h3>
+    <form id="addTransactionForm" method="POST">
+      <input type="date" id="dateField" name="date" required>
+      <input type="text" id="descField" name="description" required>
+      <input type="number" id="debitField" name="debit" placeholder="Debit Amount" required>
+      <input type="hidden" name="credit" value="0">
+
+      <div style="display: flex; gap: 10px;">
+        <button type="submit" class="btn" style="flex: 1; background-color: #4CAF50; color: white;">Add Transaction</button>
+        <button type="button" id="cancelButton" class="btn" style="flex: 1; background: #f44336; color: white;">Cancel</button>
+      </div>
+    </form>
+  </div>
 
 <script>
-  let scanInterval = null;
-  let currentStudent = null;
-  let videoStream = document.getElementById("video");
-  let scanPaused = false;
+const video = document.getElementById('video');
+const resultDiv = document.getElementById('result');
+let codeReader = null;
+let scanning = true;
+let lastCode = null;
 
-  function setDefaultFormValues() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById("dateField").value = today;
-    document.getElementById("descField").value = "Firehawk Store";
-    document.getElementById("debitField").focus();
+// Set default form values
+function setDefaultFormValues() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById("dateField").value = today;
+  document.getElementById("descField").value = "Firehawk Store";
+  document.getElementById("debitField").focus();
+}
+
+// Handle barcode scan
+async function handleScan(code) {
+  resultDiv.innerText = 'Scanned: ' + code;
+
+  const res = await fetch('/process_scan', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ code })
+  });
+
+  const data = await res.json();
+
+  if (data.found) {
+    resultDiv.innerText = "Account: " + data.name;
+    const form = document.getElementById('addTransactionForm');
+    form.action = `/add_transaction/${data.id}`;
+    document.getElementById('transaction-form').style.display = 'block';
+    setDefaultFormValues();
+    scanning = false;
+  } else {
+    resultDiv.innerText = "Student not found.";
+    scanning = true; // allow retry
   }
+}
 
-  async function checkScan() {
-    if (scanPaused) return;
+// Initialize scanner using UMD
+async function initScanner() {
+  try {
+    codeReader = new ZXing.BrowserMultiFormatReader();
 
-    const res = await fetch("/scan_status");
-    const data = await res.json();
+    // get devices using the instance method
+    codeReader.listVideoInputDevices().then((videoInputDevices) => {
+      if (!videoInputDevices || videoInputDevices.length === 0) {
+        resultDiv.innerText = "No camera found.";
+        return;
+      }
 
-    if (data.found && data.id !== currentStudent) {
-      currentStudent = data.id;
-      document.getElementById("result").innerText = "Account: " + data.name;
+      const deviceId = videoInputDevices[0].deviceId;
+      console.log("Using camera:", deviceId);
 
-      pauseCameraFeed();
-
-      const formDiv = document.getElementById("transaction-form");
-      const form = document.getElementById("addTransactionForm");
-      form.action = `/add_transaction/${data.id}`;
-      formDiv.style.display = "block";
-
-      setDefaultFormValues();
-    }
-  }
-
-  function pauseCameraFeed() {
-    videoStream.src = "";
-    scanPaused = true;
-  }
-
-  function resumeCameraFeed() {
-    videoStream.src = "{{ url_for('scanner_feed') }}";
-    scanPaused = false;
-  }
-
-  async function resetScanStatus() {
-    await fetch("/reset_scan_status", { method: "POST" });
-  }
-
-  document.getElementById("addTransactionForm").addEventListener("submit", async function (event) {
-    event.preventDefault();
-    const formData = new FormData(this);
-
-    const response = await fetch(this.action, {
-      method: "POST",
-      body: formData,
+      codeReader.decodeFromVideoDevice(deviceId, 'video', (result, err) => {
+        if (result && scanning && result.text !== lastCode) {
+          lastCode = result.text;
+          handleScan(result.text);
+        }
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+          console.error(err);
+        }
+      });
     });
 
-    if (response.ok) {
-      document.getElementById("result").innerText = "Transaction saved! Ready for next scan.";
-      document.getElementById("transaction-form").style.display = "none";
-      this.reset();
-      currentStudent = null;
-      await resetScanStatus();
-      resumeCameraFeed();
-    } else {
-      document.getElementById("result").innerText = "Error saving transaction.";
-    }
+  } catch (err) {
+    console.error("Scanner failed:", err);
+    resultDiv.innerText = "Scanner failed: " + err;
+  }
+}
+
+// Form submission
+document.getElementById("addTransactionForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  const formData = new FormData(this);
+
+  const response = await fetch(this.action, {
+    method: "POST",
+    body: formData,
   });
 
-  // 🟥 Cancel button logic
-  document.getElementById("cancelButton").addEventListener("click", async () => {
+  if (response.ok) {
+    resultDiv.innerText = "Transaction saved! Ready for next scan.";
     document.getElementById("transaction-form").style.display = "none";
-    document.getElementById("result").innerText = "Scan canceled. Ready for next scan.";
-    currentStudent = null;
-    await resetScanStatus();
-    resumeCameraFeed();
-  });
+    this.reset();
+    scanning = true;
+    lastCode = null;
+  } else {
+    resultDiv.innerText = "Error saving transaction.";
+  }
+});
 
-  // 🧩 Start scanning interval
-  window.addEventListener("load", () => {
-    scanInterval = setInterval(checkScan, 1000);
-  });
+// Cancel button
+document.getElementById("cancelButton").addEventListener("click", () => {
+  document.getElementById("transaction-form").style.display = "none";
+  resultDiv.innerText = "Scan canceled. Ready for next scan.";
+  scanning = true;
+  lastCode = null;
+});
 
-  // 🧩 Stop scanning & release camera when leaving
-  window.addEventListener("beforeunload", async () => {
-    clearInterval(scanInterval);
-    pauseCameraFeed();
-    await fetch("/release_camera");
-  });
+// Start scanner
+initScanner();
 </script>
-
 </body>
 </html>
